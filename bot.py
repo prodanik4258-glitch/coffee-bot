@@ -4,13 +4,13 @@ import logging
 from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import anthropic
+from groq import Groq
 from sheets import SheetsManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-claude_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
 sheets = SheetsManager()
 
 SYSTEM_PROMPT = """Ты помощник для учёта расходов кофейни. 
@@ -35,16 +35,21 @@ SYSTEM_PROMPT = """Ты помощник для учёта расходов ко
 
 def parse_expense(text: str) -> dict:
     try:
-        response = claude_client.messages.create(
-            model="claude-sonnet-4-6",
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": text}
+            ],
             max_tokens=300,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": text}]
+            temperature=0.1
         )
-        raw = response.content[0].text.strip()
+        raw = response.choices[0].message.content.strip()
+        # Убираем возможные markdown блоки
+        raw = raw.replace("```json", "").replace("```", "").strip()
         return json.loads(raw)
     except Exception as e:
-        logger.error(f"Ошибка Claude: {e}")
+        logger.error(f"Ошибка Groq: {e}")
         return {"valid": False}
 
 def get_keyboard():
